@@ -49,10 +49,11 @@ def save_global_summary(shap_values, X_test, path="shap_summary.png"):
 # 3. Per-alert explanation — the piece that powers the dashboard's
 #    "alert detail panel" (why was THIS transaction flagged?)
 # ---------------------------------------------------------------------
-def explain_alert(idx, model, X_test, explainer, shap_values, top_n=4):
+def explain_alert(idx, model, X_test, explainer, shap_values, top_n=4, verbose=True):
     """
     Returns a plain-language explanation for a single flagged transaction,
     formatted the way it would appear in the dashboard's alert detail view.
+    Set verbose=False to suppress printing (e.g. when called in a batch loop).
     """
     row = X_test.iloc[idx]
     risk_score = model.predict_proba(X_test.iloc[[idx]])[0, 1]
@@ -60,12 +61,13 @@ def explain_alert(idx, model, X_test, explainer, shap_values, top_n=4):
     contributions = pd.Series(shap_values.values[idx], index=FEATURES)
     top_features = contributions.abs().sort_values(ascending=False).head(top_n)
 
-    print(f"\nTransaction index {idx} — risk score {risk_score:.2f}")
-    print("Top contributing factors:")
-    for feat in top_features.index:
-        direction = "increased" if contributions[feat] > 0 else "decreased"
-        print(f"  - {feat} = {row[feat]:.2f}  ({direction} risk, "
-              f"contribution {contributions[feat]:+.3f})")
+    if verbose:
+        print(f"\nTransaction index {idx} — risk score {risk_score:.2f}")
+        print("Top contributing factors:")
+        for feat in top_features.index:
+            direction = "increased" if contributions[feat] > 0 else "decreased"
+            print(f"  - {feat} = {row[feat]:.2f}  ({direction} risk, "
+                  f"contribution {contributions[feat]:+.3f})")
 
     return {
         "risk_score": round(float(risk_score), 3),
