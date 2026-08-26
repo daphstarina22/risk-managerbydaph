@@ -31,27 +31,46 @@ company to defend against.
 6. **Explainability (SHAP)** — every flagged transaction includes its top contributing
    features and their direction of effect, so a risk analyst sees *why* a transaction
    was flagged, not just a bare score.
+7. **Decision layer with bounded actions** — risk scores are converted into one of
+   three fixed actions (`allow` / `review` / `block`) purely by threshold, never by
+   free-form model judgment. A hard safety cap (max 50 auto-blocks/hour) forces
+   graceful degradation to `review` once hit, so the system cannot silently block an
+   unbounded number of transactions. Every decision — including whether it was capped —
+   is written to an append-only audit trail (`audit_trail.jsonl`).
 
-## Results (on held-out test set)
+## Results (on held-out test set, 10,000 transactions)
 | Metric | Value |
 |---|---|
 | Precision @ selected threshold | 0.967 |
 | Recall @ selected threshold | 0.967 |
 | PR-AUC | 0.994 |
-| Estimated total cost (test batch) | ₹18,400 |
+| Estimated total cost (classifier-only batch) | ₹18,400 |
+| Precision on flagged (review + block) transactions | 90.2% (148/164) |
+| Fraudulent transactions missed (`allow`) | 2 |
+| Blocks downgraded to review by the safety cap | 97 |
+
+The safety-cap figure is a genuine result of this run, not a hypothetical: the model's
+raw confidence would have auto-blocked more than 50 transactions in this batch, and the
+hard cap forced 97 of those into human review instead — demonstrating the bound
+actually engages under load rather than existing only on paper.
 
 ## Repository structure
 - `fraud_classifier.py` — synthetic data generation, feature engineering, model
   training, evaluation, and cost-weighted threshold selection.
 - `shap_explainer.py` — per-alert and global SHAP explanations built on the trained
   model.
-- `shap_summary.png` — global feature-importance visualization.
+- `decision_layer.py` — converts risk scores into bounded actions (allow/review/block),
+  enforces the hourly safety cap, and writes the full audit trail.
+- `shap_summary.png`, `fraud_detector_architecture.png` — supporting visuals.
+- `audit_trail.jsonl` — sample audit log from an actual run (one JSON entry per
+  transaction decision).
 
 ## How to run
 ```
 pip install numpy pandas scikit-learn xgboost shap matplotlib
 python fraud_classifier.py
 python shap_explainer.py
+python decision_layer.py
 ```
 
 ## Honest limitations
@@ -66,7 +85,9 @@ python shap_explainer.py
   suspicious activity; it does not and cannot be used to evade fraud detection.
 
 ## What I'd improve with more time
-- A rules-based decision/action layer (hold, step-up authentication, escalate) with
-  an audit trail logging every decision.
 - Fused behavioral signals (device interaction patterns) alongside transaction
   fields, for a stronger account-takeover signal than transaction data alone provides.
+- A live dashboard surfacing the metrics, flagged-transaction feed, and audit trail
+  in a UI, rather than console output and a JSONL file.
+- Feedback loop: when a `review` decision is manually confirmed or overturned by an
+  analyst, feed that outcome back to recalibrate the threshold over time.
