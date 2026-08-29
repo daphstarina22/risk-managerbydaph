@@ -23,6 +23,7 @@ company to defend against.
    1.5% fraud rate without naive oversampling.
 4. **Evaluation** — precision, recall, and PR-AUC only. Accuracy is not reported, since
    it is meaningless on this class distribution (a "never fraud" model would score 98%+).
+   Validated with 5-fold cross-validation, not a single lucky split (see Results).
 5. **Cost-weighted threshold selection** — thresholds are swept against an explicit
    cost function (₹150 assumed cost per false positive: blocked legitimate customer,
    support load, churn risk; ₹8,000 assumed cost per false negative: average fraud
@@ -37,22 +38,73 @@ company to defend against.
    graceful degradation to `review` once hit, so the system cannot silently block an
    unbounded number of transactions. Every decision — including whether it was capped —
    is written to an append-only audit trail (`audit_trail.jsonl`).
+8. **Mobile behavioral signal fusion** — five simulated device/interaction signals
+   (touch pressure variance, typing rhythm deviation, device motion stability,
+   orientation changes, session duration) are fused with transaction features, since
+   account takeover shows up in *how* someone uses their phone, not just what they
+   transact. Tested as a controlled comparison against the transaction-only baseline,
+   not just assumed to help (see Results).
+9. **Data drift simulation** — the trained model is evaluated against a simulated
+   "one month later" batch where user spending habits and fraud tactics have shifted,
+   to test whether performance holds up over time rather than only on same-day data.
+10. **Live dashboard** (`app.py`, Streamlit) — summary metrics, a sortable flagged-
+    transaction feed, a click-through alert detail panel showing SHAP factors, and a
+    live audit trail viewer with a download button.
+11. **Scoring API** (`api.py`, FastAPI) — a real callable service: POST a transaction's
+    features to `/score`, get back a risk score, the bounded action, and the top SHAP
+    factors. Interactive docs at `/docs`. This is what makes the system look like
+    something that could sit behind a real payment flow, not just a notebook script.
 
-## Results (on held-out test set, 10,000 transactions)
+## Results
+**Core classifier** (held-out test set, 10,000 transactions):
 | Metric | Value |
 |---|---|
 | Precision @ selected threshold | 0.967 |
 | Recall @ selected threshold | 0.967 |
 | PR-AUC | 0.994 |
-| Estimated total cost (classifier-only batch) | ₹18,400 |
+| Estimated total cost (classifier-only batch) | Rs 18,400 |
 | Precision on flagged (review + block) transactions | 90.2% (148/164) |
 | Fraudulent transactions missed (`allow`) | 2 |
 | Blocks downgraded to review by the safety cap | 97 |
 
-The safety-cap figure is a genuine result of this run, not a hypothetical: the model's
-raw confidence would have auto-blocked more than 50 transactions in this batch, and the
-hard cap forced 97 of those into human review instead — demonstrating the bound
-actually engages under load rather than existing only on paper.
+**5-fold cross-validation** (confirms the above isn't a lucky split):
+| Metric | Mean | Std dev |
+|---|---|---|
+| PR-AUC | 0.9975 | ±0.0016 |
+| Precision | 0.9660 | ±0.0162 |
+| Recall | 0.9867 | ±0.0075 |
+
+**Mobile signal fusion** (transaction-only vs. transaction + behavioral signals):
+| Model | PR-AUC | Precision | Recall |
+|---|---|---|---|
+| Transaction-only (baseline) | 0.9939 | 0.9667 | 0.9667 |
+| Transaction + mobile signals | 0.9968 | 0.9797 | 0.9667 |
+
+A modest, honest improvement (+1.3 precision points, recall unchanged) — not an
+inflated one. Individually, mobile signals rank low in feature importance versus
+`geo_dist_from_usual_km` and `amount_zscore`; they act as a complementary boost on
+harder edge cases, not a replacement for the core transaction signal.
+
+**Drift simulation** (same model, evaluated one month later with no retraining):
+| Scenario | PR-AUC | Precision | Recall |
+|---|---|---|---|
+| Today (no drift) | 0.9939 | 0.9667 | 0.9667 |
+| One month later (drifted) | 0.9876 | 0.9625 | 0.9400 |
+
+Recall drops 2.7 points under simulated drift — a real, honest degradation.
+**Recommendation:** retrain on a rolling 2-4 week window, and monitor precision/recall
+on a held-out recent slice weekly, alerting if either drops more than 2 points from
+its trained baseline.
+
+**Analyst workload projection** (assuming 2,000,000 transactions/day): the observed
+1.64% flagged rate scales to ~32,800 alerts/day — roughly 205 full-time analysts at
+3 minutes/review. This is the concrete case for the bounded auto-decision layer: pure
+human review does not scale at this volume.
+
+The safety-cap figure above is a genuine result of an actual run, not a hypothetical:
+the model's raw confidence would have auto-blocked more than 50 transactions in that
+batch, and the hard cap forced 97 of those into human review instead — demonstrating
+the bound actually engages under load rather than existing only on paper.
 
 ## Repository structure
 - `fraud_classifier.py` — synthetic data generation, feature engineering, model
@@ -61,33 +113,50 @@ actually engages under load rather than existing only on paper.
   model.
 - `decision_layer.py` — converts risk scores into bounded actions (allow/review/block),
   enforces the hourly safety cap, and writes the full audit trail.
-- `shap_summary.png`, `fraud_detector_architecture.png` — supporting visuals.
-- `audit_trail.jsonl` — sample audit log from an actual run (one JSON entry per
-  transaction decision).
+- `mobile_signal_fusion.py` — adds simulated mobile behavioral signals and compares
+  against the transaction-only baseline.
+- `additional_evaluation.py` — precision-recall curve plot, 5-fold cross-validation,
+  and the analyst workload projection.
+- `drift_simulation.py` — "one month later" drift test and retraining recommendation.
+- `app.py` — Streamlit dashboard (metrics, transaction feed, alert detail, audit trail).
+- `api.py` — FastAPI scoring service (`/score` endpoint, interactive docs at `/docs`).
+- `shap_summary.png`, `pr_curve.png`, `fraud_detector_architecture.png` — visuals.
+- `audit_trail.jsonl` — sample audit log from an actual run.
 
 ## How to run
 ```
-pip install numpy pandas scikit-learn xgboost shap matplotlib
-python fraud_classifier.py
-python shap_explainer.py
-python decision_layer.py
+pip install numpy pandas scikit-learn xgboost shap matplotlib streamlit fastapi uvicorn
+
+python fraud_classifier.py          # core classifier
+python shap_explainer.py            # explainability
+python decision_layer.py            # bounded decisions + audit trail
+python mobile_signal_fusion.py      # mobile signal comparison
+python additional_evaluation.py     # cross-validation, PR curve, workload
+python drift_simulation.py          # drift test
+
+streamlit run app.py                # live dashboard
+uvicorn api:app --reload            # scoring API -- visit /docs to test
 ```
 
 ## Honest limitations
-- All data is synthetic. Real transaction data would likely show more varied
-  fraud patterns per alert than this dataset does — here, `geo_dist_from_usual_km`
-  dominates most top-risk alerts, which partly reflects how the synthetic fraud
-  cases were generated rather than a universal truth about ATO fraud.
-- The assumed costs (₹150 / ₹8,000) are illustrative placeholders, not derived from
-  real merchant data. The methodology (explicit cost-weighted threshold selection)
-  is the contribution here, not these specific numbers.
+- All data is synthetic, including the mobile behavioral signals (not pulled from a
+  real device SDK). A production version would need actual telemetry via a mobile
+  SDK (accelerometer, touch API) — this is explicitly future work, not a hidden gap.
+- `geo_dist_from_usual_km` dominates most top-risk alerts, which partly reflects how
+  the synthetic fraud cases were generated rather than a universal truth about ATO
+  fraud in real data.
+- The assumed costs (Rs 150 / Rs 8,000) and workload assumptions (2M txns/day, 3 min/review)
+  are illustrative placeholders, not derived from real merchant data. The methodology
+  (explicit cost-weighted thresholds, workload projection) is the contribution here,
+  not these specific numbers.
+- The drift simulation is a controlled synthetic test, not a claim about real-world
+  drift magnitude — real fraud tactics may adapt faster or slower than simulated here.
 - This is strictly a **defense-only** detection system. It identifies and flags
   suspicious activity; it does not and cannot be used to evade fraud detection.
 
 ## What I'd improve with more time
-- Fused behavioral signals (device interaction patterns) alongside transaction
-  fields, for a stronger account-takeover signal than transaction data alone provides.
-- A live dashboard surfacing the metrics, flagged-transaction feed, and audit trail
-  in a UI, rather than console output and a JSONL file.
+- Real device telemetry via a mobile SDK, replacing the simulated behavioral signals.
 - Feedback loop: when a `review` decision is manually confirmed or overturned by an
   analyst, feed that outcome back to recalibrate the threshold over time.
+- Automate the drift-monitoring recommendation into a scheduled job that actually
+  retrains and alerts, rather than a one-off simulation.
