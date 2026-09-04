@@ -54,7 +54,8 @@ class TestDecisionBoundaries:
 class TestClassifierOutput:
 
     @pytest.fixture(scope="class")
-    def trained_model(self):
+    @staticmethod
+    def trained_model():
         df = engineer_features(generate_synthetic_data(n_txns=5000))
         model, X_test, y_test = train_model(df)
         return model, X_test, y_test
