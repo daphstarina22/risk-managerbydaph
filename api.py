@@ -35,15 +35,15 @@ print("Model ready.")
 
 
 class Transaction(BaseModel):
-    amount: float = Field(..., example=4200.0)
-    amount_zscore: float = Field(..., example=3.8)
-    time_since_last_txn_min: float = Field(..., example=4.5)
-    txn_velocity_10min: int = Field(..., example=3)
-    device_change: int = Field(..., ge=0, le=1, example=1)
-    geo_dist_from_usual_km: float = Field(..., example=210.0)
-    login_burst_count: int = Field(..., example=2)
-    ip_risk_score: float = Field(..., ge=0, le=1, example=0.71)
-    hour_of_day: int = Field(..., ge=0, le=23, example=2)
+    amount: float = Field(..., json_schema_extra={"example": 4200.0})
+    amount_zscore: float = Field(..., json_schema_extra={"example": 3.8})
+    time_since_last_txn_min: float = Field(..., json_schema_extra={"example": 4.5})
+    txn_velocity_10min: int = Field(..., json_schema_extra={"example": 3})
+    device_change: int = Field(..., ge=0, le=1, json_schema_extra={"example": 1})
+    geo_dist_from_usual_km: float = Field(..., json_schema_extra={"example": 210.0})
+    login_burst_count: int = Field(..., json_schema_extra={"example": 2})
+    ip_risk_score: float = Field(..., ge=0, le=1, json_schema_extra={"example": 0.71})
+    hour_of_day: int = Field(..., ge=0, le=23, json_schema_extra={"example": 2})
 
 
 class ScoreResponse(BaseModel):

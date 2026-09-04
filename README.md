@@ -120,6 +120,9 @@ the bound actually engages under load rather than existing only on paper.
 - `drift_simulation.py` — "one month later" drift test and retraining recommendation.
 - `app.py` — Streamlit dashboard (metrics, transaction feed, alert detail, audit trail).
 - `api.py` — FastAPI scoring service (`/score` endpoint, interactive docs at `/docs`).
+- `latency_benchmark.py` — single-transaction and batch scoring speed benchmark.
+- `test_pipeline.py` — pytest suite covering decision boundaries, classifier output
+  validity, the safety cap, and API input validation.
 - `shap_summary.png`, `pr_curve.png`, `fraud_detector_architecture.png` — visuals.
 - `audit_trail.jsonl` — sample audit log from an actual run.
 
@@ -136,6 +139,10 @@ python drift_simulation.py          # drift test
 
 streamlit run app.py                # live dashboard
 uvicorn api:app --reload            # scoring API -- visit /docs to test
+
+pip install pytest
+pytest test_pipeline.py -v          # 17 tests
+python latency_benchmark.py         # scoring speed benchmark
 ```
 
 ## Honest limitations
@@ -160,3 +167,57 @@ uvicorn api:app --reload            # scoring API -- visit /docs to test
   analyst, feed that outcome back to recalibrate the threshold over time.
 - Automate the drift-monitoring recommendation into a scheduled job that actually
   retrains and alerts, rather than a one-off simulation.
+
+## Latency (can this run in real time, not just as a batch job?)
+Single-transaction scoring was benchmarked over 1,000 runs:
+
+| Metric | Value |
+|---|---|
+| Mean | 1.33 ms |
+| P95 | 1.46 ms |
+| P99 | 1.62 ms |
+
+Batch scoring throughput: ~322,000 transactions/second.
+
+A P99 of 1.6ms is well within the typical <100-200ms budget for in-line scoring
+during a payment authorization flow — this model could run **before** a transaction
+completes, not just flag it after the fact. Note: this excludes SHAP explanation
+time, which is only computed for flagged (review/block) transactions, not every
+transaction — see `decision_layer.py`.
+
+## Testing
+17 tests in `test_pipeline.py`, covering:
+- Decision boundaries (every threshold edge case for allow/review/block)
+- Classifier output validity (probabilities in [0,1], no NaNs, correct shape)
+- The safety cap actually holding under a high-fraud-volume batch
+- API input validation (rejects out-of-range risk scores and invalid hours)
+
+Run with: `pytest test_pipeline.py -v`
+
+## What broke, and what I did about it
+- **Environment setup**: lost time to Python not being on PATH, a PowerShell
+  execution-policy block on venv activation, and VS Code's Run button silently
+  using a different Python installation than the terminal. Resolved by checking
+  `sys.executable` directly to find the actual interpreter in use, and calling the
+  venv's `python.exe` by full path rather than relying on `activate` succeeding
+  silently.
+- **Git merge conflicts**: GitHub auto-created a README when the repo was made via
+  the website, which collided with a local commit. Resolved with
+  `git pull --allow-unrelated-histories` and a manual merge rather than force-pushing
+  over unknown remote content blindly.
+- **A suspicious 1.000 PR-AUC**: the first version of the synthetic data generator
+  made fraud too easily separable from legitimate transactions (perfectly separable
+  data isn't realistic and would have been an inflated, non-credible result). Caught
+  this before trusting the number, and rewrote the generator so fraud and legitimate
+  behavior genuinely overlap — the real result (0.994 PR-AUC, 0.967 precision/recall)
+  is lower, but is the one I can actually defend. The same check was applied again
+  when adding mobile signals, for the same reason.
+
+## AI usage
+AI assistance (Claude) was used for code scaffolding, debugging environment issues,
+and drafting this README. The problem framing (choosing account-takeover as the
+loss class), the cost assumptions (₹150/₹8,000), the threshold values (0.05/0.80),
+the safety-cap design, the evaluation methodology (cross-validation, drift testing,
+the workload projection), and catching and fixing the inflated PR-AUC were my
+judgment calls, not generated defaults — and I can walk through and defend any part
+of this code.
