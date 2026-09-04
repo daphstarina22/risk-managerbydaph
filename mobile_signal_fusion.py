@@ -26,6 +26,7 @@ from sklearn.metrics import average_precision_score, precision_score, recall_sco
 from xgboost import XGBClassifier
 
 from fraud_classifier import generate_synthetic_data, engineer_features, FEATURES as TXN_FEATURES
+from user_profiler import UserProfiler
 
 RNG = np.random.default_rng(7)
 
@@ -78,12 +79,12 @@ def add_mobile_signals(df):
 # ---------------------------------------------------------------------
 # Train + evaluate on a given feature set
 # ---------------------------------------------------------------------
-def train_and_eval(df, feature_list, label):
-    X = df[feature_list]
-    y = df["is_fraud"]
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.25, stratify=y, random_state=42
-    )
+def train_and_eval(train_df, test_df, feature_list, label):
+    X_train = train_df[feature_list]
+    y_train = train_df["is_fraud"]
+    X_test = test_df[feature_list]
+    y_test = test_df["is_fraud"]
+
     scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
 
     model = XGBClassifier(
@@ -110,14 +111,20 @@ def train_and_eval(df, feature_list, label):
 if __name__ == "__main__":
     print("Generating data with simulated mobile behavioral signals...")
     df = generate_synthetic_data()
-    df = engineer_features(df)
     df = add_mobile_signals(df)
 
+    train_df, test_df = train_test_split(
+        df, test_size=0.25, stratify=df["is_fraud"], random_state=42
+    )
+    profiler = UserProfiler().fit(train_df)
+    train_df = profiler.transform(train_df)
+    test_df = profiler.transform(test_df)
+
     print("\nTraining baseline (transaction features only)...")
-    _, baseline = train_and_eval(df, TXN_FEATURES, "Transaction-only (baseline)")
+    _, baseline = train_and_eval(train_df, test_df, TXN_FEATURES, "Transaction-only (baseline)")
 
     print("Training fused model (transaction + mobile behavioral signals)...")
-    fused_model, fused = train_and_eval(df, ALL_FEATURES, "Transaction + mobile signals")
+    fused_model, fused = train_and_eval(train_df, test_df, ALL_FEATURES, "Transaction + mobile signals")
 
     comparison = pd.DataFrame([baseline, fused]).set_index("label")
     print("\n" + "=" * 60)

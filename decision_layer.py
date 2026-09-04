@@ -13,12 +13,15 @@ track's evaluation bar calls out explicitly.
 """
 
 import json
+import threading
+import time
+from collections import deque
 from datetime import datetime, timezone
+from typing import Optional, Tuple, Dict, Any, List
 
 import numpy as np
 import pandas as pd
 
-from fraud_classifier import generate_synthetic_data, engineer_features, train_model, FEATURES
 from shap_explainer import build_explainer, explain_alert
 
 
@@ -31,10 +34,9 @@ BLOCK_THRESHOLD = 0.80    # high-confidence fraud — hold outright
 
 # Hard caps, independent of model confidence — these never change per-transaction
 MAX_AUTO_BLOCKS_PER_HOUR = 50   # safety valve against a runaway false-positive spike
-COOLDOWN_AFTER_BLOCK_MIN = 15   # a blocked user isn't re-flagged again immediately
 
 
-def decide_action(risk_score):
+def decide_action(risk_score: float) -> str:
     if risk_score >= BLOCK_THRESHOLD:
         return "block"
     elif risk_score >= REVIEW_THRESHOLD:
@@ -44,38 +46,113 @@ def decide_action(risk_score):
 
 
 # ---------------------------------------------------------------------
+# Safety Cap Manager — thread-safe sliding 1-hour auto-block limiter
+# ---------------------------------------------------------------------
+class SafetyCapManager:
+    """
+    Stateful safety valve against runaway false-positive block spikes.
+    Tracks block events in a rolling 1-hour window (3600s) and degrades
+    subsequent blocks to 'review' once MAX_AUTO_BLOCKS_PER_HOUR is reached.
+    """
+    def __init__(self, max_blocks_per_hour: int = MAX_AUTO_BLOCKS_PER_HOUR, window_sec: float = 3600.0):
+        self.max_blocks_per_hour = max_blocks_per_hour
+        self.window_sec = window_sec
+        self.block_timestamps: deque = deque()
+        self.lock = threading.Lock()
+
+    def evaluate_block(self, now: Optional[float] = None) -> Tuple[str, bool]:
+        """
+        Evaluates a potential 'block' action against the safety cap.
+        Returns:
+            (action, capped_by_safety_limit)
+            - If under cap: ('block', False)
+            - If cap reached: ('review', True)
+        """
+        if now is None:
+            now = time.time()
+
+        with self.lock:
+            cutoff = now - self.window_sec
+            while self.block_timestamps and self.block_timestamps[0] < cutoff:
+                self.block_timestamps.popleft()
+
+            if len(self.block_timestamps) >= self.max_blocks_per_hour:
+                return "review", True
+            else:
+                self.block_timestamps.append(now)
+                return "block", False
+
+    def reset(self) -> None:
+        """Resets block counters (useful for tests or batch simulations)."""
+        with self.lock:
+            self.block_timestamps.clear()
+
+    @property
+    def current_block_count(self) -> int:
+        with self.lock:
+            now = time.time()
+            cutoff = now - self.window_sec
+            while self.block_timestamps and self.block_timestamps[0] < cutoff:
+                self.block_timestamps.popleft()
+            return len(self.block_timestamps)
+
+
+# ---------------------------------------------------------------------
+# Audit Logger — thread-safe append-only JSONL audit writer
+# ---------------------------------------------------------------------
+class AuditLogger:
+    """
+    Thread-safe append-only audit logger writing structured JSONL records.
+    """
+    def __init__(self, path: str = "audit_trail.jsonl"):
+        self.path = path
+        self.lock = threading.Lock()
+
+    def log_entry(self, entry: Dict[str, Any]) -> None:
+        """Appends a single JSONL entry to the audit trail."""
+        with self.lock:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry) + "\n")
+
+    def log_batch(self, entries: List[Dict[str, Any]], append: bool = True) -> None:
+        """Writes or appends a list of JSONL entries."""
+        mode = "a" if append else "w"
+        with self.lock:
+            with open(self.path, mode, encoding="utf-8") as f:
+                for entry in entries:
+                    f.write(json.dumps(entry) + "\n")
+
+
+# ---------------------------------------------------------------------
 # Process a batch of transactions -> decisions + full audit trail
 # ---------------------------------------------------------------------
-def process_batch(model, X_test, y_test, explainer, shap_values, txn_ids=None):
+def process_batch(model, X_test, y_test, explainer, shap_values, txn_ids=None, safety_cap=None):
     probs = model.predict_proba(X_test)[:, 1]
     audit_log = []
-    block_count_this_hour = 0
+
+    if safety_cap is None:
+        safety_cap = SafetyCapManager()
+    else:
+        safety_cap.reset()
 
     if txn_ids is None:
         txn_ids = [f"TXN{100000 + i}" for i in range(len(X_test))]
+
+    # Fixed timestamp base for batch simulation so all batch items fall in the same 1-hr window
+    batch_time = time.time()
 
     for i in range(len(X_test)):
         risk_score = float(probs[i])
         action = decide_action(risk_score)
 
-        # Hard safety cap — even if the model wants to block more, stop and
-        # escalate to human review instead once the cap is hit. This is the
-        # kind of bound the track's bar explicitly asks for.
         if action == "block":
-            if block_count_this_hour >= MAX_AUTO_BLOCKS_PER_HOUR:
-                action = "review"  # degrade gracefully, never fail silently
-                capped = True
-            else:
-                block_count_this_hour += 1
-                capped = False
+            action, capped = safety_cap.evaluate_block(now=batch_time)
         else:
             capped = False
 
-        # Explanation only computed for non-trivial actions — cheap to run
-        # for everything here, but in production you'd skip this for "allow"
         reasoning = None
         if action in ("review", "block"):
-            reasoning = explain_alert(i, model, X_test, explainer, shap_values, top_n=3, verbose=False)
+            reasoning = explain_alert(i, model, X_test, explainer, shap_values, top_n=3, verbose=False, risk_score=risk_score)
 
         entry = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -94,11 +171,11 @@ def process_batch(model, X_test, y_test, explainer, shap_values, txn_ids=None):
 # ---------------------------------------------------------------------
 # Save + summarize the audit trail
 # ---------------------------------------------------------------------
-def save_audit_trail(audit_log, path="audit_trail.jsonl"):
-    with open(path, "w") as f:
-        for entry in audit_log:
-            f.write(json.dumps(entry) + "\n")
-    print(f"Saved {len(audit_log)} audit entries to {path}")
+def save_audit_trail(audit_log, path="audit_trail.jsonl", append=False):
+    logger = AuditLogger(path)
+    logger.log_batch(audit_log, append=append)
+    action_type = "Appended" if append else "Saved"
+    print(f"{action_type} {len(audit_log)} audit entries to {path}")
 
 
 def summarize(audit_log):

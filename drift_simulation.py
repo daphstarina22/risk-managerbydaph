@@ -15,6 +15,7 @@ from sklearn.metrics import average_precision_score, precision_score, recall_sco
 from xgboost import XGBClassifier
 
 from fraud_classifier import engineer_features, FEATURES
+from user_profiler import UserProfiler
 
 RNG = np.random.default_rng(99)
 
@@ -82,12 +83,17 @@ if __name__ == "__main__":
     from fraud_classifier import generate_synthetic_data
 
     print("Training model on 'today' data...")
-    today_df = engineer_features(generate_synthetic_data())
-    X = today_df[FEATURES]
-    y = today_df["is_fraud"]
-    X_train, X_test_today, y_train, y_test_today = train_test_split(
-        X, y, test_size=0.25, stratify=y, random_state=42
+    today_raw = generate_synthetic_data()
+    train_today, test_today = train_test_split(
+        today_raw, test_size=0.25, stratify=today_raw["is_fraud"], random_state=42
     )
+    profiler = UserProfiler().fit(train_today)
+    train_today = profiler.transform(train_today)
+    test_today = profiler.transform(test_today)
+
+    X_train, y_train = train_today[FEATURES], train_today["is_fraud"]
+    X_test_today, y_test_today = test_today[FEATURES], test_today["is_fraud"]
+
     scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()
     model = XGBClassifier(
         n_estimators=200, max_depth=4, learning_rate=0.08,
@@ -108,7 +114,8 @@ if __name__ == "__main__":
     today_result = evaluate(X_test_today, y_test_today, "Today (no drift)")
 
     print("Generating 'one month later' drifted batch...")
-    drifted_df = engineer_features(generate_drifted_data())
+    drifted_raw = generate_drifted_data()
+    drifted_df = profiler.transform(drifted_raw)
     X_drift = drifted_df[FEATURES]
     y_drift = drifted_df["is_fraud"]
 

@@ -14,21 +14,18 @@ import matplotlib
 matplotlib.use("Agg")  # no GUI backend needed, we just save images
 import matplotlib.pyplot as plt
 
-from fraud_classifier import (
-    generate_synthetic_data, engineer_features, train_model, FEATURES
-)
+from fraud_classifier import generate_synthetic_data, train_model, FEATURES
 
 
 # ---------------------------------------------------------------------
 # 1. Train the same model and set up a SHAP explainer
 # ---------------------------------------------------------------------
-def build_explainer():
+def build_explainer(compute_shap_values=True):
     df = generate_synthetic_data()
-    df = engineer_features(df)
     model, X_test, y_test = train_model(df)
 
     explainer = shap.TreeExplainer(model)
-    shap_values = explainer(X_test)
+    shap_values = explainer(X_test) if compute_shap_values else None
 
     return model, X_test, y_test, explainer, shap_values
 
@@ -49,16 +46,23 @@ def save_global_summary(shap_values, X_test, path="shap_summary.png"):
 # 3. Per-alert explanation — the piece that powers the dashboard's
 #    "alert detail panel" (why was THIS transaction flagged?)
 # ---------------------------------------------------------------------
-def explain_alert(idx, model, X_test, explainer, shap_values, top_n=4, verbose=True):
+def explain_alert(idx, model, X_test, explainer, shap_values=None, top_n=4, verbose=True, risk_score=None):
     """
     Returns a plain-language explanation for a single flagged transaction,
     formatted the way it would appear in the dashboard's alert detail view.
     Set verbose=False to suppress printing (e.g. when called in a batch loop).
+    If shap_values is None, computes local SHAP factors on-demand.
     """
     row = X_test.iloc[idx]
-    risk_score = model.predict_proba(X_test.iloc[[idx]])[0, 1]
+    if risk_score is None:
+        risk_score = model.predict_proba(X_test.iloc[[idx]])[0, 1]
 
-    contributions = pd.Series(shap_values.values[idx], index=FEATURES)
+    if shap_values is not None:
+        contributions = pd.Series(shap_values.values[idx], index=FEATURES)
+    else:
+        explainer_result = explainer(X_test.iloc[[idx]])
+        contributions = pd.Series(explainer_result.values[0], index=FEATURES)
+
     top_features = contributions.abs().sort_values(ascending=False).head(top_n)
 
     if verbose:

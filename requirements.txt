@@ -1,0 +1,21 @@
+# Core ML & Inference
+numpy==2.5.2
+pandas==3.0.5
+scipy==1.18.1
+scikit-learn==1.9.0
+xgboost==3.4.1
+shap==0.52.0
+
+# API & Serving
+fastapi==0.141.1
+uvicorn==0.52.4
+pydantic==2.13.5
+httpx==0.28.1
+
+# Dashboard & Visualization
+streamlit==1.63.0
+matplotlib==3.11.1
+altair==6.2.2
+
+# Testing & Quality
+pytest==9.1.1
