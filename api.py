@@ -1,11 +1,11 @@
 """
-FastAPI service wrapping the fraud-spike detector.
-Razorpay Buildathon — AI Risk Manager track.
+VIGIL — Behavioral AI Risk Manager API
+"Detect. Explain. Decide. Protect."
 
+FastAPI service wrapping the VIGIL RiskPipeline.
 POST a transaction's features, get back a risk score, the bounded action
 (allow/review/block), and the top SHAP factors behind the decision.
-This is what turns the model from "a script that runs" into "a service
-that could plausibly sit behind a real payment flow."
+This turns the model into a resilient real-time risk decisioning service.
 
 Run with:  uvicorn api:app --reload
 Then POST to http://127.0.0.1:8000/score
@@ -23,8 +23,8 @@ from risk_pipeline import get_pipeline
 
 
 app = FastAPI(
-    title="Fraud-spike detector API",
-    description="Razorpay Buildathon — AI Risk Manager track",
+    title="VIGIL — Behavioral AI Risk Manager API",
+    description="Detect. Explain. Decide. Protect. | Real-time behavioral fraud and account-takeover risk detection API.",
 )
 
 START_TIME = time.time()
@@ -62,6 +62,8 @@ class ScoreResponse(BaseModel):
 def root():
     return {
         "service": "Fraud-spike detector",
+        "system": "VIGIL — Behavioral AI Risk Manager",
+        "tagline": "Detect. Explain. Decide. Protect.",
         "status": "ready",
         "endpoints": {
             "/score": "POST a transaction to get a risk score and action",

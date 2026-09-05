@@ -1,15 +1,15 @@
 """
-Decision layer + audit trail for the fraud-spike detector.
-Razorpay Buildathon — AI Risk Manager track.
+VIGIL — Behavioral AI Risk Manager
+"Detect. Explain. Decide. Protect."
 
+Decision layer + audit trail for VIGIL.
 Turns a bare risk score into a bounded, explainable action:
   allow  -> below the cost-optimal threshold, process normally
   review -> moderate risk, flag for step-up authentication
   block  -> high risk, hold the transaction
 
 Every decision is logged with its reasoning (top SHAP factors) so the
-system is auditable — this is the "gated and logged" requirement the
-track's evaluation bar calls out explicitly.
+system is auditable, gated, and safety-capped.
 """
 
 import json

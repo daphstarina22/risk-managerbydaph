@@ -1,6 +1,8 @@
-# Razorpay AI Risk Manager — Fraud-Spike & Account-Takeover Detection System
+# VIGIL — Behavioral AI Risk Manager
 
-A production-oriented risk scoring prototype designed to detect real-time fraud spikes and account takeover (ATO) attacks in high-velocity payment flows. The system fuses behavioral deviation profiling ($z$-scores) with transaction velocity and device signals, evaluates risk using an XGBoost classifier with cost-weighted thresholding, enforces bounded decisions (`allow`, `review`, `block`) with a thread-safe safety cap, generates on-demand local SHAP explanations, and records an append-only audit trail.
+> **"Detect. Explain. Decide. Protect."**
+
+A production-oriented risk scoring prototype designed to detect real-time fraud spikes and account takeover (ATO) attacks in high-velocity payment flows. Built around behavioral deviation profiling ($z$-scores) fused with transaction velocity and device signals, VIGIL evaluates risk using an XGBoost classifier with cost-weighted thresholding, enforces bounded decisions (`allow`, `review`, `block`) with a thread-safe safety cap, generates on-demand local SHAP explanations, and records an append-only audit trail.
 
 ---
 

@@ -1,7 +1,8 @@
 """
-Fraud-spike / account-takeover detector — Streamlit dashboard & What-If Simulator.
-Razorpay Buildathon — AI Risk Manager track.
+VIGIL — Behavioral AI Risk Manager
+"Detect. Explain. Decide. Protect."
 
+Streamlit Dashboard & Interactive What-If Simulator.
 Features:
   1. What-If Fraud Risk Simulator: Interactive transaction feature tweaking with 6 presets,
      dynamic baseline z-score derivation, bounded actions, safety cap, and on-demand SHAP.
@@ -27,7 +28,7 @@ from risk_pipeline import get_pipeline
 
 
 st.set_page_config(
-    page_title="Risk Manager — AI Fraud & ATO Monitor",
+    page_title="VIGIL — Behavioral AI Risk Manager",
     page_icon="🛡️",
     layout="wide",
 )
@@ -128,12 +129,64 @@ with st.spinner("Initializing shared risk pipeline, model artifacts, and baselin
 
 
 # ---------------------------------------------------------------------
-# Header
+# Sidebar Branding & Configuration
 # ---------------------------------------------------------------------
-st.title("🛡️ AI Risk Manager — Fraud-Spike & ATO Monitor")
+with st.sidebar:
+    st.markdown("## 🛡️ VIGIL")
+    st.markdown("**Behavioral AI Risk Manager**")
+    st.caption("*Detect. Explain. Decide. Protect.*")
+    st.divider()
+
+    st.markdown("### 🏛️ Core Pillars")
+    st.markdown(
+        """
+        - 🎯 **Detect**: Behavioral $z$-score deviation
+        - 🔍 **Explain**: On-demand TreeSHAP attribution
+        - ⚖️ **Decide**: Cost-weighted bounded actions
+        - 🛑 **Protect**: Thread-safe safety capping
+        """
+    )
+    st.divider()
+
+    st.markdown("### ⚙️ Engine Policy")
+    st.markdown(
+        f"""
+        - **Decision Bounds**:
+          - 🟢 `Allow`: `< {REVIEW_THRESHOLD}`
+          - 🟡 `Review`: `[{REVIEW_THRESHOLD}, {BLOCK_THRESHOLD})`
+          - 🔴 `Block`: `≥ {BLOCK_THRESHOLD}`
+        - **Safety Limit**: `{MAX_AUTO_BLOCKS_PER_HOUR} auto-blocks/hr`
+        - **Model Core**: XGBoost (`scale_pos_weight=65.7`)
+        - **Explainability**: Local TreeSHAP
+        - **Baseline Profiling**: Leak-Free `UserProfiler`
+        """
+    )
+    st.divider()
+    st.caption(
+        "VIGIL identifies high-velocity fraud spikes and account takeover (ATO) "
+        "by profiling deviations from per-user historical spending baselines."
+    )
+
+
+# ---------------------------------------------------------------------
+# Main Header & Landing Presentation
+# ---------------------------------------------------------------------
+st.title("🛡️ VIGIL — Behavioral AI Risk Manager")
+st.markdown("### *Detect. Explain. Decide. Protect.*")
+
+# 4 Pillars Value Prop Banner
+p1, p2, p3, p4 = st.columns(4)
+with p1:
+    st.info("🎯 **1. Detect**\n\nBehavioral $z$-score deviation vs. learned historical spend baseline.")
+with p2:
+    st.info("🔍 **2. Explain**\n\nOn-demand local TreeSHAP factor attributions on flagged alerts.")
+with p3:
+    st.info("⚖️ **3. Decide**\n\nCost-optimal bounded actions: Allow, Step-Up Review, or Block.")
+with p4:
+    st.info(f"🛑 **4. Protect**\n\nSliding-window safety cap limiting auto-blocks to {MAX_AUTO_BLOCKS_PER_HOUR}/hr.")
+
 st.caption(
-    "Razorpay AI Buildathon — AI Risk Manager Track | "
-    f"Operating Thresholds: Allow < {REVIEW_THRESHOLD} | Review [{REVIEW_THRESHOLD}, {BLOCK_THRESHOLD}) | Block ≥ {BLOCK_THRESHOLD} | "
+    f"VIGIL Core System | Operating Thresholds: Allow < {REVIEW_THRESHOLD} | Review [{REVIEW_THRESHOLD}, {BLOCK_THRESHOLD}) | Block ≥ {BLOCK_THRESHOLD} | "
     f"Safety Cap: {MAX_AUTO_BLOCKS_PER_HOUR} auto-blocks/hr"
 )
 

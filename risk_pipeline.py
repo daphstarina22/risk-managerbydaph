@@ -1,7 +1,8 @@
 """
-Shared risk decision pipeline for the fraud-spike detector.
-Razorpay Buildathon — AI Risk Manager track.
+VIGIL — Behavioral AI Risk Manager
+"Detect. Explain. Decide. Protect."
 
+Shared risk decision pipeline for VIGIL.
 Unified engine connecting feature transformation (UserProfiler), model inference
 (XGBoost), decision gating (bounded thresholds), stateful auto-block safety capping
 (SafetyCapManager), SHAP local explainability, and append-only audit logging.

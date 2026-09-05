@@ -1,10 +1,9 @@
 """
-SHAP explainability layer for the fraud-spike detector.
-Razorpay Buildathon — AI Risk Manager track.
+VIGIL — Behavioral AI Risk Manager
+"Detect. Explain. Decide. Protect."
 
-Builds on fraud_classifier.py: trains the same model, then explains
-*why* each flagged transaction was flagged — turning a bare risk score
-into something a risk analyst could actually act on.
+SHAP explainability layer for VIGIL: explains *why* each flagged transaction
+was flagged — turning a bare risk score into something a risk analyst can act on.
 """
 
 import numpy as np

@@ -1,7 +1,8 @@
 """
-Behavioral baseline profiler for the fraud-spike detector.
-Razorpay Buildathon — AI Risk Manager track.
+VIGIL — Behavioral AI Risk Manager
+"Detect. Explain. Decide. Protect."
 
+Behavioral baseline profiler for VIGIL.
 Computes user-specific spending baselines strictly on training data to prevent
 data leakage across train/validation/test splits and between folds. Provides
 population-level fallback priors for unseen users during inference.

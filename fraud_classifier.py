@@ -1,8 +1,8 @@
 """
-Fraud-spike / account-takeover detector — core classifier.
-Razorpay Buildathon — AI Risk Manager track.
+VIGIL — Behavioral AI Risk Manager
+"Detect. Explain. Decide. Protect."
 
-Pipeline: synthetic data -> feature engineering -> XGBoost classifier
+Core classifier module: synthetic data -> feature engineering -> XGBoost classifier
 -> precision/recall/PR-AUC -> cost-weighted threshold selection.
 """
 
